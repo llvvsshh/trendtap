@@ -5,7 +5,7 @@ require('dotenv').config();
 
 const app = express();
 
-// Explicit CORS headers
+// CORS Headers
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -15,11 +15,10 @@ app.use((req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-// YouTube Trending
+// YouTube
 app.get('/api/youtube-trends', async (req, res) => {
   try {
-    const response = await axios.get(
-      `https://www.googleapis.com/youtube/v3/videos`, {
+    const response = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
       params: {
         part: 'snippet',
         chart: 'mostPopular',
@@ -30,7 +29,6 @@ app.get('/api/youtube-trends', async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    console.error('YouTube API error:', error.message);
     res.status(500).json({ error: 'YouTube fetch failed' });
   }
 });
@@ -45,10 +43,12 @@ app.get('/api/reddit-hot', async (req, res) => {
       title: post.data.title,
       subreddit: post.data.subreddit,
       url: `https://reddit.com${post.data.permalink}`
-    }));
+    })).filter(post =>
+      post.subreddit.toLowerCase().match(/hiphopheads|memes|blackpeopletwitter/) ||
+      post.title.toLowerCase().match(/drake|uzi|kai|meme|funny|beef|rap/)
+    );
     res.json(posts);
   } catch (error) {
-    console.error('Reddit API error:', error.message);
     res.status(500).json({ error: 'Reddit fetch failed' });
   }
 });
@@ -61,10 +61,11 @@ app.get('/api/tiktok-trending', async (req, res) => {
       title: item.title,
       video_url: item.video_url,
       likes: item.likes,
-    }));
+    })).filter(item =>
+      item.title.toLowerCase().match(/meme|dance|funny|kai|lay bankz|uzi|challenge|trend|rizz|yeat|faze|amp|gunna/)
+    );
     res.json(videos);
   } catch (error) {
-    console.error('TikTok API error:', error.message);
     res.status(500).json({ error: 'TikTok fetch failed' });
   }
 });
@@ -73,14 +74,16 @@ app.get('/api/tiktok-trending', async (req, res) => {
 app.get('/api/google-trends', async (req, res) => {
   try {
     const response = await axios.get('https://trends24.in/united-states/');
-    const matches = [...response.data.matchAll(/<a href="(\/topic\/.*?)">(.*?)<\/a>/g)];
+    const matches = [...response.data.matchAll(/<a href="(\/topics\/.*?)">(.*?)<\/a>/g)];
     const trends = matches.map(m => ({
       topic: m[2],
-      search_url: `https://trends.google.com${m[1]}`
-    }));
+      region: "United States",
+      url: `https://twitter.com/search?q=${encodeURIComponent(m[2])}`
+    })).filter(item =>
+      item.topic.toLowerCase().match(/rap|drake|meme|uzi|kai|beef|trend|hiphop|lay bankz/)
+    );
     res.json(trends.slice(0, 10));
   } catch (error) {
-    console.error('Google Trends error:', error.message);
     res.status(500).json({ error: 'Google Trends fetch failed' });
   }
 });
@@ -96,18 +99,56 @@ app.get('/api/apple-trending', async (req, res) => {
     }));
     res.json(tracks.slice(0, 10));
   } catch (error) {
-    console.error('Apple Music API error:', error.message);
     res.status(500).json({ error: 'Apple Music fetch failed' });
   }
 });
 
-// Placeholder for Spotify and Twitter
-app.get('/api/spotify-viral', (req, res) => {
-  res.status(501).json({ error: 'Spotify integration coming soon' });
+// Spotify Viral 50
+app.get('/api/spotify-viral', async (req, res) => {
+  try {
+    const tokenResp = await axios.post('https://accounts.spotify.com/api/token', 'grant_type=client_credentials', {
+      headers: {
+        Authorization: 'Basic ' + Buffer.from('35fb675264394a01b270318f81118889:f40e1362c9fd42e58385dd99e3535e00').toString('base64'),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+    const token = tokenResp.data.access_token;
+
+    const playlistResp = await axios.get('https://api.spotify.com/v1/playlists/37i9dQZEVXbLiRSasKsNU9', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const tracks = playlistResp.data.tracks.items.map(item => ({
+      track_name: item.track.name,
+      artist: item.track.artists[0].name,
+      album_cover: item.track.album.images[0].url,
+      spotify_url: item.track.external_urls.spotify
+    })).filter(song =>
+      song.artist.toLowerCase().match(/drake|sza|yeat|uzi|21 savage|lay bankz|gunna|future|tyla|ice spice|doja/)
+    );
+
+    res.json(tracks.slice(0, 10));
+  } catch (error) {
+    res.status(500).json({ error: 'Spotify fetch failed' });
+  }
 });
 
-app.get('/api/x-trending', (req, res) => {
-  res.status(501).json({ error: 'Twitter/X integration coming soon' });
+// Twitter/X Trends from Trends24
+app.get('/api/x-trending', async (req, res) => {
+  try {
+    const response = await axios.get('https://trends24.in/united-states/');
+    const matches = [...response.data.matchAll(/<a href="(\/topics\/.*?)">(.*?)<\/a>/g)];
+    const trends = matches.map(m => ({
+      topic: m[2],
+      region: "United States",
+      url: `https://twitter.com/search?q=${encodeURIComponent(m[2])}`
+    })).filter(item =>
+      item.topic.toLowerCase().match(/rap|drake|meme|uzi|kai|beef|trend|hiphop|faze|amp/)
+    );
+    res.json(trends.slice(0, 10));
+  } catch (error) {
+    res.status(500).json({ error: 'Twitter/X fetch failed' });
+  }
 });
 
 app.listen(PORT, () => {
